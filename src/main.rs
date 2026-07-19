@@ -3,11 +3,11 @@ use gloo_timers::future::sleep;
 use instant::Instant;
 use std::time::Duration;
 
-use hot_dof::starforce::{
+use yasf::starforce::{
     EnhancementMode, EnhanceConfig, BIN_SIZE, SimResult, CanvasItem, stars_engine, simulate_equip,
     propagate_canvas_items, format_mesos, format_duration,
 };
-use hot_dof::components::canvas::StarsVisualizer;
+use yasf::components::canvas::StarsVisualizer;
 
 static CSS: Asset = asset!("/assets/main.css");
 
@@ -564,11 +564,9 @@ fn App() -> Element {
             header { class: "app-header",
                 h1 { class: "title-glow",
                     span { class: "visual-star filled", "★" }
-                    "Star Force Simulator"
+                    "YASF - Yet Another StarForce"
                 }
                 p { class: "subtitle", "High-performance Monte Carlo simulation for MapleStory Star Force enhancement costs, booms, and luck distribution." }
-                
-
             }
 
             // Tab Buttons

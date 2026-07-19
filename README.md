@@ -1,10 +1,10 @@
-# Starforce Canvas (Hot DOF)
+# YASF (Yet Another StarForce)
 
 A high-performance, interactive MapleStory Starforce Enhancement Simulator & Node Graph Visualizer built in Rust using **Dioxus 0.7** and WebAssembly (WASM).
 
 ## Overview
 
-**Starforce Canvas** enables players and theorycrafters to model, simulate, and analyze complex equipment starforcing scenarios. From individual item enhancement calculations to multi-equipment Transfer Hammer chain flows on a visual node canvas, the application provides real-time Monte Carlo statistics, cost histograms, boom probability heatmaps, and per-star friction analysis.
+**YASF (Yet Another StarForce)** enables players and theorycrafters to model, simulate, and analyze complex equipment starforcing scenarios. From individual item enhancement calculations to multi-equipment Transfer Hammer chain flows on a visual node canvas, the application provides real-time Monte Carlo statistics, cost histograms, boom probability heatmaps, and per-star friction analysis.
 
 ## Key Features
 

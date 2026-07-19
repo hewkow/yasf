@@ -1,5 +1,5 @@
 [package]
-name = "hot_dof"
+name = "yasf"
 version = "0.1.0"
 authors = ["hewkow <159999128+hewkow@users.noreply.github.com>"]
 edition = "2021"
