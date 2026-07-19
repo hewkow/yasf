@@ -1,0 +1,34 @@
+[package]
+name = "hot_dof"
+version = "0.1.0"
+authors = ["hewkow <159999128+hewkow@users.noreply.github.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dioxus = { version = "0.7.1", features = [] }
+num-format = "0.4.4"
+rand = { version = "0.9.4", features = ["small_rng"] }
+rayon = "1.12.0"
+chrono = { version = "0.4", features = ["wasmbind"] }
+instant = { version = "0.1", features = ["wasm-bindgen"] }
+# Add both versions here to force the feature flag on both branches of your graph
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
+getrandom_03 = { package = "getrandom", version = "0.3.4", features = ["wasm_js"] }
+dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
+dioxus-google-fonts = "0.1.4"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+gloo-timers = { version = "0.4.0", features = ["futures"] }
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Worker", "WorkerOptions", "WorkerType", "MessageEvent"]
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
