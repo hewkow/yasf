@@ -153,8 +153,12 @@ fn App() -> Element {
         } else {
             Vec::new()
         }
-    });    // Client-side CDF Chart rendering (reactive to result, layout_mode, and equipment_count changes)
+    });    // Client-side CDF Chart rendering (reactive to result, active_tab, layout_mode, and equipment_count changes)
     use_effect(move || {
+        let tab = active_tab();
+        if tab != AppTab::Simulator {
+            return;
+        }
         let res = result();
         let cdf_data = cdf_points();
         let _layout = layout_mode();
@@ -180,6 +184,12 @@ fn App() -> Element {
                         return;
                     }}
                     
+                    const cdfCanvas = document.getElementById('cdf-chart-canvas');
+                    if (!cdfCanvas) {{
+                        setTimeout(drawCDF, 50);
+                        return;
+                    }}
+                    
                     const gridColor = 'rgba(255, 255, 255, 0.08)';
                     const textColor = '#9ca3af';
                     const fontMono = "'JetBrains Mono', monospace";
@@ -188,59 +198,56 @@ fn App() -> Element {
                     Chart.defaults.color = textColor;
                     Chart.defaults.font.family = fontSans;
 
-                    const cdfCanvas = document.getElementById('cdf-chart-canvas');
-                    if (cdfCanvas) {{
-                        if (window.cdfChartInstance) {{
-                            window.cdfChartInstance.destroy();
-                        }}
-                        window.cdfChartInstance = new Chart(cdfCanvas, {{
-                            type: 'line',
-                            data: {{
-                                labels: {cdf_labels},
-                                datasets: [{{
-                                    label: 'Success Chance',
-                                    data: {cdf_values},
-                                    borderColor: '#e2b44c',
-                                    backgroundColor: 'rgba(226, 180, 76, 0.08)',
-                                    borderWidth: 2,
-                                    pointBackgroundColor: '#070913',
-                                    pointBorderColor: '#e2b44c',
-                                    pointRadius: 3,
-                                    fill: true,
-                                    tension: 0.4
-                                }}]
-                            }},
-                            options: {{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {{
-                                    legend: {{ display: false }},
-                                    tooltip: {{
-                                        callbacks: {{
-                                            label: (ctx) => ctx.parsed.y.toFixed(1) + '% chance',
-                                            title: (ctx) => 'Budget: ' + ctx[0].label
-                                        }},
-                                        titleFont: {{ family: fontMono }},
-                                        bodyFont: {{ family: fontMono }}
-                                    }}
-                                }},
-                                scales: {{
-                                    x: {{
-                                        title: {{ display: true, text: 'Meso Budget', color: textColor }},
-                                        grid: {{ color: gridColor }},
-                                        ticks: {{ font: {{ family: fontMono }} }}
+                    if (window.cdfChartInstance) {{
+                        window.cdfChartInstance.destroy();
+                    }}
+                    window.cdfChartInstance = new Chart(cdfCanvas, {{
+                        type: 'line',
+                        data: {{
+                            labels: {cdf_labels},
+                            datasets: [{{
+                                label: 'Success Chance',
+                                data: {cdf_values},
+                                borderColor: '#e2b44c',
+                                backgroundColor: 'rgba(226, 180, 76, 0.08)',
+                                borderWidth: 2,
+                                pointBackgroundColor: '#070913',
+                                pointBorderColor: '#e2b44c',
+                                pointRadius: 3,
+                                fill: true,
+                                tension: 0.4
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{ display: false }},
+                                tooltip: {{
+                                    callbacks: {{
+                                        label: (ctx) => ctx.parsed.y.toFixed(1) + '% chance',
+                                        title: (ctx) => 'Budget: ' + ctx[0].label
                                     }},
-                                    y: {{
-                                        title: {{ display: true, text: 'Probability (%)', color: textColor }},
-                                        grid: {{ color: gridColor }},
-                                        min: 0,
-                                        max: 100,
-                                        ticks: {{ font: {{ family: fontMono }}, stepSize: 20 }}
-                                    }}
+                                    titleFont: {{ family: fontMono }},
+                                    bodyFont: {{ family: fontMono }}
+                                }}
+                            }},
+                            scales: {{
+                                x: {{
+                                    title: {{ display: true, text: 'Meso Budget', color: textColor }},
+                                    grid: {{ color: gridColor }},
+                                    ticks: {{ font: {{ family: fontMono }} }}
+                                }},
+                                y: {{
+                                    title: {{ display: true, text: 'Probability (%)', color: textColor }},
+                                    grid: {{ color: gridColor }},
+                                    min: 0,
+                                    max: 100,
+                                    ticks: {{ font: {{ family: fontMono }}, stepSize: 20 }}
                                 }}
                             }}
-                        }});
-                    }}
+                        }}
+                    }});
                 }}
                 drawCDF();
                 "#,
@@ -252,8 +259,12 @@ fn App() -> Element {
         }
     });
 
-    // Client-side Bottlenecks & Boom Chart rendering (reactive to result and layout_mode changes)
+    // Client-side Bottlenecks & Boom Chart rendering (reactive to result, active_tab, and layout_mode changes)
     use_effect(move || {
+        let tab = active_tab();
+        if tab != AppTab::Simulator {
+            return;
+        }
         let res = result();
         let _layout = layout_mode();
         if let Some(res) = res {
@@ -308,6 +319,15 @@ fn App() -> Element {
                         return;
                     }}
                     
+                    const costCanvas = document.getElementById('bottlenecks-cost-canvas');
+                    const boomBnCanvas = document.getElementById('bottlenecks-boom-canvas');
+                    const boomCanvas = document.getElementById('boom-chart-canvas');
+
+                    if (!costCanvas || !boomBnCanvas || !boomCanvas) {{
+                        setTimeout(drawBottlenecksAndBooms, 50);
+                        return;
+                    }}
+                    
                     const gridColor = 'rgba(255, 255, 255, 0.08)';
                     const textColor = '#9ca3af';
                     const fontMono = "'JetBrains Mono', monospace";
@@ -325,155 +345,146 @@ fn App() -> Element {
                     }}
 
                     // Meso Cost Bottlenecks Chart
-                    const costCanvas = document.getElementById('bottlenecks-cost-canvas');
-                    if (costCanvas) {{
-                        if (window.bnCostChartInstance) {{
-                            window.bnCostChartInstance.destroy();
-                        }}
-                        window.bnCostChartInstance = new Chart(costCanvas, {{
-                            type: 'bar',
-                            data: {{
-                                labels: {bottleneck_labels},
-                                datasets: [{{
-                                    label: 'Avg Cost',
-                                    data: {bottleneck_costs},
-                                    backgroundColor: 'rgba(79, 70, 229, 0.75)',
-                                    borderColor: '#4f46e5',
-                                    borderWidth: 1,
-                                    borderRadius: 4
-                                }}]
+                    if (window.bnCostChartInstance) {{
+                        window.bnCostChartInstance.destroy();
+                    }}
+                    window.bnCostChartInstance = new Chart(costCanvas, {{
+                        type: 'bar',
+                        data: {{
+                            labels: {bottleneck_labels},
+                            datasets: [{{
+                                label: 'Avg Cost',
+                                data: {bottleneck_costs},
+                                backgroundColor: 'rgba(79, 70, 229, 0.75)',
+                                borderColor: '#4f46e5',
+                                borderWidth: 1,
+                                borderRadius: 4
+                            }}]
+                        }},
+                        options: {{
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{ display: false }},
+                                tooltip: {{
+                                    callbacks: {{
+                                        label: (ctx) => formatMesosJS(ctx.parsed.x) + ' mesos'
+                                    }},
+                                    bodyFont: {{ family: fontMono }}
+                                }}
                             }},
-                            options: {{
-                                indexAxis: 'y',
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {{
-                                    legend: {{ display: false }},
-                                    tooltip: {{
-                                        callbacks: {{
-                                            label: (ctx) => 'Cost: ' + formatMesosJS(ctx.parsed.x)
-                                        }},
-                                        bodyFont: {{ family: fontMono }}
+                            scales: {{
+                                x: {{
+                                    type: 'linear',
+                                    title: {{ display: true, text: 'Average Cost (Mesos)', color: textColor }},
+                                    grid: {{ color: gridColor }},
+                                    ticks: {{
+                                        font: {{ family: fontMono }},
+                                        callback: (val) => formatMesosJS(val)
                                     }}
                                 }},
-                                scales: {{
-                                    x: {{
-                                        type: 'linear',
-                                        title: {{ display: true, text: 'Average Cost (Mesos)', color: textColor }},
-                                        grid: {{ color: gridColor }},
-                                        ticks: {{
-                                            font: {{ family: fontMono }},
-                                            callback: (value) => formatMesosJS(value)
-                                        }}
-                                    }},
-                                    y: {{
-                                        grid: {{ display: false }},
-                                        ticks: {{ font: {{ family: fontMono, weight: 'bold' }} }}
-                                    }}
+                                y: {{
+                                    grid: {{ display: false }},
+                                    ticks: {{ font: {{ family: fontMono, weight: 'bold' }} }}
                                 }}
                             }}
-                        }});
-                    }}
+                        }}
+                    }});
 
                     // Boom Bottlenecks Chart
-                    const boomBnCanvas = document.getElementById('bottlenecks-boom-canvas');
-                    if (boomBnCanvas) {{
-                        if (window.bnBoomChartInstance) {{
-                            window.bnBoomChartInstance.destroy();
-                        }}
-                        window.bnBoomChartInstance = new Chart(boomBnCanvas, {{
-                            type: 'bar',
-                            data: {{
-                                labels: {bottleneck_labels},
-                                datasets: [{{
-                                    label: 'Expected Booms',
-                                    data: {bottleneck_booms},
-                                    backgroundColor: 'rgba(233, 69, 96, 0.75)',
-                                    borderColor: '#e94560',
-                                    borderWidth: 1,
-                                    borderRadius: 4
-                                }}]
+                    if (window.bnBoomChartInstance) {{
+                        window.bnBoomChartInstance.destroy();
+                    }}
+                    window.bnBoomChartInstance = new Chart(boomBnCanvas, {{
+                        type: 'bar',
+                        data: {{
+                            labels: {bottleneck_labels},
+                            datasets: [{{
+                                label: 'Avg Booms',
+                                data: {bottleneck_booms},
+                                backgroundColor: 'rgba(239, 68, 68, 0.75)',
+                                borderColor: '#ef4444',
+                                borderWidth: 1,
+                                borderRadius: 4
+                            }}]
+                        }},
+                        options: {{
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{ display: false }},
+                                tooltip: {{
+                                    callbacks: {{
+                                        label: (ctx) => ctx.parsed.x.toFixed(2) + ' booms'
+                                    }},
+                                    bodyFont: {{ family: fontMono }}
+                                }}
                             }},
-                            options: {{
-                                indexAxis: 'y',
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {{
-                                    legend: {{ display: false }},
-                                    tooltip: {{
-                                        callbacks: {{
-                                            label: (ctx) => 'Booms: ' + ctx.parsed.x.toFixed(3)
-                                        }},
-                                        bodyFont: {{ family: fontMono }}
+                            scales: {{
+                                x: {{
+                                    type: 'linear',
+                                    title: {{ display: true, text: 'Average Booms', color: textColor }},
+                                    grid: {{ color: gridColor }},
+                                    ticks: {{
+                                        font: {{ family: fontMono }}
                                     }}
                                 }},
-                                scales: {{
-                                    x: {{
-                                        type: 'linear',
-                                        title: {{ display: true, text: 'Expected Booms', color: textColor }},
-                                        grid: {{ color: gridColor }},
-                                        ticks: {{
-                                            font: {{ family: fontMono }}
-                                        }}
-                                    }},
-                                    y: {{
-                                        grid: {{ display: false }},
-                                        ticks: {{ font: {{ family: fontMono, weight: 'bold' }} }}
-                                    }}
+                                y: {{
+                                    grid: {{ display: false }},
+                                    ticks: {{ font: {{ family: fontMono, weight: 'bold' }} }}
                                 }}
                             }}
-                        }});
-                    }}
+                        }}
+                    }});
 
                     // Boom Chart
-                    const boomCanvas = document.getElementById('boom-chart-canvas');
-                    if (boomCanvas) {{
-                        if (window.boomChartInstance) {{
-                            window.boomChartInstance.destroy();
-                        }}
-                        const bLabels = {boom_labels};
-                        window.boomChartInstance = new Chart(boomCanvas, {{
-                            type: 'bar',
-                            data: {{
-                                labels: bLabels,
-                                datasets: [{{
-                                    label: 'Probability (%)',
-                                    data: {boom_values},
-                                    backgroundColor: bLabels.map((lbl) => lbl === '0' ? 'rgba(16, 185, 129, 0.75)' : 'rgba(233, 69, 96, 0.75)'),
-                                    borderColor: bLabels.map((lbl) => lbl === '0' ? '#10b981' : '#e94560'),
-                                    borderWidth: 1,
-                                    borderRadius: 4
-                                }}]
-                            }},
-                            options: {{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {{
-                                    legend: {{ display: false }},
-                                    tooltip: {{
-                                        callbacks: {{
-                                            label: (ctx) => ctx.parsed.y.toFixed(1) + '% chance'
-                                        }},
-                                        bodyFont: {{ family: fontMono }}
-                                    }}
-                                }},
-                                scales: {{
-                                    x: {{
-                                        title: {{ display: true, text: 'Number of Booms', color: textColor }},
-                                        grid: {{ display: false }},
-                                        ticks: {{ font: {{ family: fontMono }} }}
+                    if (window.boomChartInstance) {{
+                        window.boomChartInstance.destroy();
+                    }}
+                    const bLabels = {boom_labels};
+                    window.boomChartInstance = new Chart(boomCanvas, {{
+                        type: 'bar',
+                        data: {{
+                            labels: bLabels,
+                            datasets: [{{
+                                label: 'Probability (%)',
+                                data: {boom_values},
+                                backgroundColor: bLabels.map((lbl) => lbl === '0' ? 'rgba(16, 185, 129, 0.75)' : 'rgba(233, 69, 96, 0.75)'),
+                                borderColor: bLabels.map((lbl) => lbl === '0' ? '#10b981' : '#e94560'),
+                                borderWidth: 1,
+                                borderRadius: 4
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{ display: false }},
+                                tooltip: {{
+                                    callbacks: {{
+                                        label: (ctx) => ctx.parsed.y.toFixed(1) + '% chance'
                                     }},
-                                    y: {{
-                                        title: {{ display: true, text: 'Probability (%)', color: textColor }},
-                                        grid: {{ color: gridColor }},
-                                        min: 0,
-                                        max: 100,
-                                        ticks: {{ font: {{ family: fontMono }}, stepSize: 25 }}
-                                    }}
+                                    bodyFont: {{ family: fontMono }}
+                                }}
+                            }},
+                            scales: {{
+                                x: {{
+                                    title: {{ display: true, text: 'Number of Booms', color: textColor }},
+                                    grid: {{ display: false }},
+                                    ticks: {{ font: {{ family: fontMono }} }}
+                                }},
+                                y: {{
+                                    title: {{ display: true, text: 'Probability (%)', color: textColor }},
+                                    grid: {{ color: gridColor }},
+                                    min: 0,
+                                    max: 100,
+                                    ticks: {{ font: {{ family: fontMono }}, stepSize: 25 }}
                                 }}
                             }}
-                        }});
-                    }}
+                        }}
+                    }});
                 }}
                 drawBottlenecksAndBooms();
                 "#,
