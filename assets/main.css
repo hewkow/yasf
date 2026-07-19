@@ -1072,13 +1072,94 @@ canvas {
   left: 0;
   right: 0;
   bottom: 0;
-  background-size: 20px 20px;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-color: rgba(5, 7, 18, 0.95);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
   overflow: hidden;
+  user-select: none;
+  outline: none;
+  cursor: default;
 }
 
 .canvas-area:focus {
   outline: none;
+}
+
+.canvas-area.grab {
+  cursor: grab;
+}
+
+.canvas-area.grabbing {
+  cursor: grabbing;
+}
+
+/* Canvas World Transformation Layer */
+.canvas-world-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+/* Floating Zoom HUD Toolbar */
+.canvas-zoom-hud {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(13, 17, 33, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 4px 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.canvas-zoom-hud .hud-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.canvas-zoom-hud .hud-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.canvas-zoom-hud .hud-btn.text-btn {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.canvas-zoom-hud .hud-zoom-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-gold);
+  min-width: 42px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.canvas-zoom-hud .hud-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 2px;
 }
 
 /* Floating Top Summary Bar */
@@ -1364,8 +1445,9 @@ canvas {
 /* Equipment Card on Canvas */
 .canvas-equip-card {
   position: absolute;
-  width: 200px;
-  height: 130px;
+  width: 210px;
+  height: auto;
+  min-height: 130px;
   box-sizing: border-box;
   background: rgba(13, 17, 33, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1420,43 +1502,81 @@ canvas {
   transition: all var(--transition-fast);
 }
 
-.canvas-equip-card-delete:hover {
+.canvas-equip-card-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.canvas-equip-card-delete-btn:hover {
   color: var(--color-ruby);
-  background: rgba(233, 69, 96, 0.1);
+  background: rgba(233, 69, 96, 0.15);
 }
 
 .canvas-equip-card-stars {
-  color: var(--color-gold);
-  font-size: 0.75rem;
-  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
-.canvas-equip-card-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-family: var(--font-mono);
+.canvas-equip-card-stars .star-val {
+  color: var(--color-gold);
+}
+
+.canvas-equip-card-stars .star-val.target {
+  color: #38bdf8;
+}
+
+.canvas-equip-card-stars .arrow {
+  color: var(--text-muted);
   font-size: 0.7rem;
 }
 
-.canvas-equip-card-stat-row {
+.canvas-equip-card-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.canvas-equip-card-metrics .metric-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
 }
 
-.canvas-equip-card-stat-label {
+.canvas-equip-card-metrics .metric-label {
   color: var(--text-muted);
+  font-weight: 600;
 }
 
-.canvas-equip-card-stat-value {
-  color: #ffffff;
-  font-weight: 500;
+.canvas-equip-card-metrics .metric-val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.canvas-equip-card-metrics .metric-val.gold {
+  color: var(--color-gold);
+}
+
+.canvas-equip-card-metrics .metric-val.ruby {
+  color: var(--color-ruby);
 }
 
 .canvas-equip-card-badge {

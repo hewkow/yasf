@@ -1,4 +1,6 @@
 use dioxus::prelude::*;
+use dioxus::html::geometry::WheelDelta;
+use dioxus::html::input_data::MouseButton;
 use gloo_timers::future::sleep;
 use instant::Instant;
 use std::time::Duration;
@@ -118,7 +120,15 @@ fn App() -> Element {
     let mut active_source_pin = use_signal(|| None::<usize>);
     let mut draft_mouse_coords = use_signal(|| (0_i32, 0_i32));
     let mut canvas_error = use_signal(|| String::new());
-    let mut canvas_viewport_offset = use_signal(|| (0.0f64, 0.0f64));
+    // Infinite Canvas Viewport States
+    let mut pan_x = use_signal(|| 0.0f64);
+    let mut pan_y = use_signal(|| 0.0f64);
+    let mut zoom_level = use_signal(|| 1.0f64);
+    let mut is_panning = use_signal(|| false);
+    let mut pan_start_mouse = use_signal(|| (0.0f64, 0.0f64));
+    let mut pan_start_offset = use_signal(|| (0.0f64, 0.0f64));
+    let mut is_space_pressed = use_signal(|| false);
+    let mut canvas_client_offset = use_signal(|| (0.0f64, 0.0f64));
     // Canvas simulation config (global, affects all items on canvas)
     let mut canvas_trials = use_signal(|| 50_000_u32);
     let mut cost_display_mode = use_signal(|| DisplayMode::Average);
@@ -1116,120 +1126,263 @@ fn App() -> Element {
         } else {
             div { class: "canvas-page-grid",
                 div { class: "canvas-workspace",
-                    // The Canvas Area (stretches to full workspace size)
+                    div { class: if is_panning() { "canvas-area grabbing" } else if is_space_pressed() { "canvas-area grab" } else { "canvas-area" },
+                    style: "background-size: {24.0 * zoom_level()}px {24.0 * zoom_level()}px; background-position: {pan_x()}px {pan_y()}px;",
+                    tabindex: 0,
+                    onkeydown: move |evt| {
+                        if evt.key().to_string() == " " {
+                            is_space_pressed.set(true);
+                        } else if evt.key() == Key::Delete {
+                            if let Some(item_id) = selected_item_id() {
+                                canvas_items.write().retain(|x| x.id != item_id);
+                                connections.write().retain(|&(s, t)| s != item_id && t != item_id);
+                                selected_item_id.set(None);
+                            }
+                        }
+                    },
+                    onkeyup: move |evt| {
+                        if evt.key().to_string() == " " {
+                            is_space_pressed.set(false);
+                        }
+                    },
+                    onwheel: move |evt| {
+                        evt.prevent_default();
+                        let delta = evt.data().delta();
+                        let dy = match delta {
+                            WheelDelta::Pixels(vec) => vec.y,
+                            WheelDelta::Lines(vec) => vec.y * 20.0,
+                            WheelDelta::Pages(vec) => vec.y * 100.0,
+                        };
+                        let zoom_factor = if dy < 0.0 { 1.15f64 } else { 0.85f64 };
+                        let cur_zoom = zoom_level();
+                        let new_zoom = (cur_zoom * zoom_factor).clamp(0.15, 3.0);
+                        
+                        let coords = evt.data().element_coordinates();
+                        let mouse_x = coords.x;
+                        let mouse_y = coords.y;
+                        
+                        let ratio = new_zoom / cur_zoom;
+                        let new_pan_x = mouse_x - (mouse_x - pan_x()) * ratio;
+                        let new_pan_y = mouse_y - (mouse_y - pan_y()) * ratio;
+                        
+                        zoom_level.set(new_zoom);
+                        pan_x.set(new_pan_x);
+                        pan_y.set(new_pan_y);
+                    },
+                    onmousedown: move |evt| {
+                        let is_middle = evt.data().held_buttons().contains(MouseButton::Auxiliary) || evt.data().trigger_button() == Some(MouseButton::Auxiliary);
+                        let is_primary = evt.data().held_buttons().contains(MouseButton::Primary) || evt.data().trigger_button() == Some(MouseButton::Primary);
+                        
+                        selected_item_id.set(None);
+                        active_source_pin.set(None);
+
+                        if is_middle || is_space_pressed() || is_primary {
+                            is_panning.set(true);
+                            let coords = evt.data().client_coordinates();
+                            pan_start_mouse.set((coords.x, coords.y));
+                            pan_start_offset.set((pan_x(), pan_y()));
+                        }
+                    },
+                    ondragover: move |evt| {
+                        evt.prevent_default();
+                    },
+                    ondrop: move |evt| {
+                        if let Some(idx) = dragged_palette_idx() {
+                            let client = evt.data().client_coordinates();
+                            let offset = canvas_client_offset();
+                            
+                            let canvas_x = if offset.0 > 0.0 { client.x - offset.0 } else { evt.data().element_coordinates().x };
+                            let canvas_y = if offset.1 > 0.0 { client.y - offset.1 } else { evt.data().element_coordinates().y };
+                            
+                            let z = zoom_level();
+                            let world_x = ((canvas_x - pan_x()) / z) as i32;
+                            let world_y = ((canvas_y - pan_y()) / z) as i32;
+                            
+                            let id = next_id();
+                            next_id.set(id + 1);
+                            
+                            let drop_x = world_x - 105;
+                            let drop_y = world_y - 40;
+                            
+                            if idx == 999 {
+                                let (cost, booms, med_cost, med_booms) = simulate_equip(0, 22, 140, true, true, true, true, [EnhancementMode::Level1; 7], canvas_trials());
+                                canvas_items.write().push(CanvasItem {
+                                    id,
+                                    name: "Custom Equipment".to_string(),
+                                    level: 140,
+                                    png_url: "custom".to_string(),
+                                    is_custom: true,
+                                    start_stars: 0,
+                                    target_stars: 22,
+                                    safeguard: true,
+                                    star_catch: true,
+                                    ssf_cost: true,
+                                    ssf_boom: true,
+                                    mode_15_21: [EnhancementMode::Level1; 7],
+                                    x: drop_x,
+                                    y: drop_y,
+                                    avg_cost: cost,
+                                    avg_booms: booms,
+                                    median_cost: med_cost,
+                                    median_booms: med_booms,
+                                });
+                            } else if idx < TEMPLATES.len() {
+                                let template = &TEMPLATES[idx];
+                                let (cost, booms, med_cost, med_booms) = simulate_equip(0, 22, template.level, true, true, true, true, [EnhancementMode::Level1; 7], canvas_trials());
+                                canvas_items.write().push(CanvasItem {
+                                    id,
+                                    name: template.name.to_string(),
+                                    level: template.level,
+                                    png_url: template.asset.to_string(),
+                                    is_custom: false,
+                                    start_stars: 0,
+                                    target_stars: 22,
+                                    safeguard: true,
+                                    star_catch: true,
+                                    ssf_cost: true,
+                                    ssf_boom: true,
+                                    mode_15_21: [EnhancementMode::Level1; 7],
+                                    x: drop_x,
+                                    y: drop_y,
+                                    avg_cost: cost,
+                                    avg_booms: booms,
+                                    median_cost: med_cost,
+                                    median_booms: med_booms,
+                                });
+                            }
+                            selected_item_id.set(Some(id));
+                            is_properties_open.set(true); // Auto-open properties
+                            dragged_palette_idx.set(None);
+                        }
+                    },
+                    onmousemove: move |evt| {
+                        let client = evt.data().client_coordinates();
+                        let elem = evt.data().element_coordinates();
+                        if elem.x > 0.0 && elem.y > 0.0 {
+                            canvas_client_offset.set((client.x - elem.x, client.y - elem.y));
+                        }
+
+                        if is_panning() {
+                            let coords = evt.data().client_coordinates();
+                            let dx = coords.x - pan_start_mouse().0;
+                            let dy = coords.y - pan_start_mouse().1;
+                            pan_x.set(pan_start_offset().0 + dx);
+                            pan_y.set(pan_start_offset().1 + dy);
+                        } else if let Some(id) = dragging_id() {
+                            let coords = evt.data().client_coordinates();
+                            let start_mouse = drag_start_mouse();
+                            let start_item = drag_start_item();
+                            
+                            let z = zoom_level();
+                            let dx = ((coords.x - start_mouse.0) / z) as i32;
+                            let dy = ((coords.y - start_mouse.1) / z) as i32;
+                            
+                            let pos = canvas_items.read().iter().position(|item| item.id == id);
+                            if let Some(pos) = pos {
+                                let mut items = canvas_items.write();
+                                items[pos].x = start_item.0 + dx;
+                                items[pos].y = start_item.1 + dy;
+                            }
+                        } else if active_source_pin().is_some() {
+                            let coords = evt.data().client_coordinates();
+                            let start_mouse = drag_start_mouse();
+                            let start_item = drag_start_item();
+                            let z = zoom_level();
+                            let dx = (coords.x - start_mouse.0) / z;
+                            let dy = (coords.y - start_mouse.1) / z;
+                            draft_mouse_coords.set(((start_item.0 as f64 + dx) as i32, (start_item.1 as f64 + dy) as i32));
+                        }
+                    },
+                    onmouseup: move |_| {
+                        is_panning.set(false);
+                        dragging_id.set(None);
+                        active_source_pin.set(None);
+                    },
+                    onmouseleave: move |_| {
+                        is_panning.set(false);
+                        dragging_id.set(None);
+                    },
+
+                    // Floating Zoom Controls HUD Toolbar
+                    div { class: "canvas-zoom-hud",
+                        button {
+                            class: "hud-btn",
+                            r#type: "button",
+                            title: "Zoom Out",
+                            onclick: move |evt| {
+                                let z = (zoom_level() / 1.15).max(0.15);
+                                zoom_level.set(z);
+                                evt.stop_propagation();
+                            },
+                            "−"
+                        }
+                        span { class: "hud-zoom-label", "{(zoom_level() * 100.0).round() as u32}%" }
+                        button {
+                            class: "hud-btn",
+                            r#type: "button",
+                            title: "Zoom In",
+                            onclick: move |evt| {
+                                let z = (zoom_level() * 1.15).min(3.0);
+                                zoom_level.set(z);
+                                evt.stop_propagation();
+                            },
+                            "+"
+                        }
+                        div { class: "hud-divider" }
+                        button {
+                            class: "hud-btn text-btn",
+                            r#type: "button",
+                            title: "Reset View (1:1)",
+                            onclick: move |evt| {
+                                zoom_level.set(1.0);
+                                pan_x.set(0.0);
+                                pan_y.set(0.0);
+                                evt.stop_propagation();
+                            },
+                            "1:1"
+                        }
+                        button {
+                            class: "hud-btn text-btn",
+                            r#type: "button",
+                            title: "Fit View to Content",
+                            onclick: move |evt| {
+                                let items = canvas_items();
+                                if !items.is_empty() {
+                                    let mut min_x = i32::MAX;
+                                    let mut max_x = i32::MIN;
+                                    let mut min_y = i32::MAX;
+                                    let mut max_y = i32::MIN;
+                                    for it in &items {
+                                        min_x = min_x.min(it.x);
+                                        max_x = max_x.max(it.x + 210);
+                                        min_y = min_y.min(it.y);
+                                        max_y = max_y.max(it.y + 130);
+                                    }
+                                    let content_w = (max_x - min_x) as f64 + 100.0;
+                                    let content_h = (max_y - min_y) as f64 + 100.0;
+                                    let target_scale_x = 800.0 / content_w;
+                                    let target_scale_y = 600.0 / content_h;
+                                    let fit_zoom = target_scale_x.min(target_scale_y).clamp(0.2, 1.5);
+                                    let target_pan_x = (800.0 - (min_x as f64 + max_x as f64) * fit_zoom) / 2.0;
+                                    let target_pan_y = (600.0 - (min_y as f64 + max_y as f64) * fit_zoom) / 2.0;
+                                    zoom_level.set(fit_zoom);
+                                    pan_x.set(target_pan_x);
+                                    pan_y.set(target_pan_y);
+                                }
+                                evt.stop_propagation();
+                            },
+                            "Fit"
+                        }
+                    }
+
+                    // World Transformation Layer
                     div {
-                        class: "canvas-area",
-                        tabindex: 0,
-                        onkeydown: move |evt| {
-                            if evt.key() == Key::Delete {
-                                if let Some(item_id) = selected_item_id() {
-                                    canvas_items.write().retain(|x| x.id != item_id);
-                                    connections.write().retain(|&(s, t)| s != item_id && t != item_id);
-                                    selected_item_id.set(None);
-                                }
-                            }
-                        },
-                        onmousedown: move |_| {
-                            selected_item_id.set(None);
-                            active_source_pin.set(None);
-                        },
-                        ondragover: move |evt| {
-                            evt.prevent_default();
-                        },
-                        ondrop: move |evt| {
-                            if let Some(idx) = dragged_palette_idx() {
-                                let coords = evt.data().element_coordinates();
-                                let id = next_id();
-                                next_id.set(id + 1);
-                                
-                                let drop_x = (coords.x as i32 - 100).max(0);
-                                let drop_y = (coords.y as i32 - 40).max(0);
-                                
-                                if idx == 999 {
-                                    let (cost, booms, med_cost, med_booms) = simulate_equip(0, 22, 140, true, true, true, true, [EnhancementMode::Level1; 7], canvas_trials());
-                                    canvas_items.write().push(CanvasItem {
-                                        id,
-                                        name: "Custom Equipment".to_string(),
-                                        level: 140,
-                                        png_url: "custom".to_string(),
-                                        is_custom: true,
-                                        start_stars: 0,
-                                        target_stars: 22,
-                                        safeguard: true,
-                                        star_catch: true,
-                                        ssf_cost: true,
-                                        ssf_boom: true,
-                                        mode_15_21: [EnhancementMode::Level1; 7],
-                                        x: drop_x,
-                                        y: drop_y,
-                                        avg_cost: cost,
-                                        avg_booms: booms,
-                                        median_cost: med_cost,
-                                        median_booms: med_booms,
-                                    });
-                                } else if idx < TEMPLATES.len() {
-                                    let template = &TEMPLATES[idx];
-                                    let (cost, booms, med_cost, med_booms) = simulate_equip(0, 22, template.level, true, true, true, true, [EnhancementMode::Level1; 7], canvas_trials());
-                                    canvas_items.write().push(CanvasItem {
-                                        id,
-                                        name: template.name.to_string(),
-                                        level: template.level,
-                                        png_url: template.asset.to_string(),
-                                        is_custom: false,
-                                        start_stars: 0,
-                                        target_stars: 22,
-                                        safeguard: true,
-                                        star_catch: true,
-                                        ssf_cost: true,
-                                        ssf_boom: true,
-                                        mode_15_21: [EnhancementMode::Level1; 7],
-                                        x: drop_x,
-                                        y: drop_y,
-                                        avg_cost: cost,
-                                        avg_booms: booms,
-                                        median_cost: med_cost,
-                                        median_booms: med_booms,
-                                    });
-                                }
-                                selected_item_id.set(Some(id));
-                                is_properties_open.set(true); // Auto-open properties
-                                dragged_palette_idx.set(None);
-                            }
-                        },
-                        onmousemove: move |evt| {
-                            if let Some(id) = dragging_id() {
-                                let coords = evt.data().client_coordinates();
-                                let start_mouse = drag_start_mouse();
-                                let start_item = drag_start_item();
-                                
-                                let dx = (coords.x - start_mouse.0) as i32;
-                                let dy = (coords.y - start_mouse.1) as i32;
-                                
-                                let pos = canvas_items.read().iter().position(|item| item.id == id);
-                                if let Some(pos) = pos {
-                                    let mut items = canvas_items.write();
-                                    items[pos].x = (start_item.0 + dx).max(0);
-                                    items[pos].y = (start_item.1 + dy).max(0);
-                                }
-                            } else if active_source_pin().is_some() {
-                                let coords = evt.data().client_coordinates();
-                                let offset = canvas_viewport_offset();
-                                let cur_x = (coords.x - offset.0) as i32;
-                                let cur_y = (coords.y - offset.1) as i32;
-                                draft_mouse_coords.set((cur_x, cur_y));
-                            }
-                        },
-                        onmouseup: move |_| {
-                            dragging_id.set(None);
-                            active_source_pin.set(None);
-                        },
-                        onmouseleave: move |_| {
-                            dragging_id.set(None);
-                        },
+                        class: "canvas-world-layer",
+                        style: "transform: translate({pan_x()}px, {pan_y()}px) scale({zoom_level()}); transform-origin: 0 0;",
 
                         // SVG overlay for connection lines
                         svg {
-                            style: "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5;",
+                            style: "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; overflow: visible;",
                             
                             // Render established connections
                             {
@@ -1237,10 +1390,10 @@ fn App() -> Element {
                                     let source_opt = canvas_items().iter().find(|x| x.id == source_id).cloned();
                                     let target_opt = canvas_items().iter().find(|x| x.id == target_id).cloned();
                                     if let (Some(src), Some(tgt)) = (source_opt, target_opt) {
-                                        let x1 = (src.x + 200) as f64;
-                                        let y1 = (src.y + 65) as f64;
+                                        let x1 = (src.x + 210) as f64;
+                                        let y1 = (src.y + 75) as f64;
                                         let x2 = tgt.x as f64;
-                                        let mut y2 = (tgt.y + 65) as f64;
+                                        let mut y2 = (tgt.y + 75) as f64;
                                         if (y2 - y1).abs() < 0.1 {
                                             y2 += 0.1;
                                         }
@@ -1293,8 +1446,8 @@ fn App() -> Element {
                             {
                                 if let Some(src_id) = active_source_pin() {
                                     canvas_items().iter().find(|x| x.id == src_id).map(|src| {
-                                        let x1 = (src.x + 200) as f64;
-                                        let y1 = (src.y + 65) as f64;
+                                        let x1 = (src.x + 210) as f64;
+                                        let y1 = (src.y + 75) as f64;
                                         let (x2, mut y2) = {
                                             let coords = draft_mouse_coords();
                                             (coords.0 as f64, coords.1 as f64)
@@ -1410,15 +1563,9 @@ fn App() -> Element {
                                     onmousedown: move |evt| {
                                         active_source_pin.set(Some(item.id));
                                         let client = evt.data().client_coordinates();
-                                        let element = evt.data().element_coordinates();
-                                        let pin_tl_x = (item.x + 200 - 7) as f64;
-                                        let pin_tl_y = (item.y + 65 - 7) as f64;
-                                        let click_canvas_x = pin_tl_x + element.x;
-                                        let click_canvas_y = pin_tl_y + element.y;
-                                        let origin_x = client.x - click_canvas_x;
-                                        let origin_y = client.y - click_canvas_y;
-                                        canvas_viewport_offset.set((origin_x, origin_y));
-                                        draft_mouse_coords.set((item.x + 200, item.y + 65));
+                                        drag_start_mouse.set((client.x, client.y));
+                                        drag_start_item.set((item.x + 210, item.y + 75));
+                                        draft_mouse_coords.set((item.x + 210, item.y + 75));
                                         evt.stop_propagation();
                                     },
                                     onmouseup: move |evt| {
@@ -1437,16 +1584,16 @@ fn App() -> Element {
                                     }
                                     span { class: "canvas-equip-card-title", "{item.name}" }
                                     button {
-                                        class: "canvas-equip-card-delete",
-                                        r#type: "button",
+                                        class: "canvas-equip-card-delete-btn",
+                                        title: "Delete equipment",
                                         onclick: move |evt| {
-                                            let item_id = item.id;
-                                            evt.stop_propagation();
-                                            canvas_items.write().retain(|x| x.id != item_id);
-                                            connections.write().retain(|&(s, t)| s != item_id && t != item_id);
-                                            if selected_item_id() == Some(item_id) {
+                                            let id = item.id;
+                                            canvas_items.write().retain(|x| x.id != id);
+                                            connections.write().retain(|&(s, t)| s != id && t != id);
+                                            if selected_item_id() == Some(id) {
                                                 selected_item_id.set(None);
                                             }
+                                            evt.stop_propagation();
                                         },
                                         "×"
                                     }
@@ -1489,30 +1636,203 @@ fn App() -> Element {
                                         }
                                     }
                                 }
-                                div { class: "canvas-equip-card-stars", "★ {item.start_stars} ➔ {item.target_stars}" }
-                                div { class: "canvas-equip-card-stats",
-                                    div { class: "canvas-equip-card-stat-row",
-                                        span { class: "canvas-equip-card-stat-label", "Cost:" }
-                                        span { class: "canvas-equip-card-stat-value",
+                                div { class: "canvas-equip-card-stars",
+                                    span { class: "star-val", "{item.start_stars} ★" }
+                                    span { class: "arrow", "➔" }
+                                    span { class: "star-val target", "{item.target_stars} ★" }
+                                }
+                                div { class: "canvas-equip-card-metrics",
+                                    div { class: "metric-item",
+                                        span { class: "metric-label", "Cost" }
+                                        span { class: "metric-val gold",
                                             {
-                                                let v = if cost_display_mode() == DisplayMode::Median { item.median_cost } else { item.avg_cost };
-                                                format_mesos(v)
+                                                let val = if cost_display_mode() == DisplayMode::Median {
+                                                    item.median_cost
+                                                } else {
+                                                    item.avg_cost
+                                                };
+                                                format_mesos(val)
                                             }
                                         }
                                     }
-                                    div { class: "canvas-equip-card-stat-row",
-                                        span { class: "canvas-equip-card-stat-label", "Booms:" }
-                                        span { class: "canvas-equip-card-stat-value",
+                                    div { class: "metric-item",
+                                        span { class: "metric-label", "Booms" }
+                                        span { class: "metric-val ruby",
                                             {
-                                                let v = if booms_display_mode() == DisplayMode::Median { item.median_booms } else { item.avg_booms };
-                                                format!("{:.2}", v)
+                                                let val = if booms_display_mode() == DisplayMode::Median {
+                                                    item.median_booms
+                                                } else {
+                                                    item.avg_booms
+                                                };
+                                                format!("{:.2}", val)
                                             }
                                         }
                                     }
                                 }
                             }
+
+                            // Equipment Set Summary Cards (rendered in World Space)
+                            {
+                                let directed_adj = {
+                                    let mut adj = std::collections::HashMap::<usize, Vec<usize>>::new();
+                                    for item in canvas_items().iter() {
+                                        adj.insert(item.id, Vec::new());
+                                    }
+                                    for &(src, tgt) in connections().iter() {
+                                        if adj.contains_key(&src) && adj.contains_key(&tgt) {
+                                            adj.get_mut(&src).unwrap().push(tgt);
+                                        }
+                                    }
+                                    adj
+                                };
+
+                                let sets = {
+                                    let mut visited = std::collections::HashSet::<usize>::new();
+                                    let mut result_sets = Vec::<(Vec<usize>, u128, f64)>::new();
+                                    let items = canvas_items();
+                                    let conn_list = connections();
+
+                                    let mut undir_adj = std::collections::HashMap::<usize, Vec<usize>>::new();
+                                    for item in items.iter() {
+                                        undir_adj.insert(item.id, Vec::new());
+                                    }
+                                    for &(src, tgt) in conn_list.iter() {
+                                        if undir_adj.contains_key(&src) && undir_adj.contains_key(&tgt) {
+                                            undir_adj.get_mut(&src).unwrap().push(tgt);
+                                            undir_adj.get_mut(&tgt).unwrap().push(src);
+                                        }
+                                    }
+
+                                    for item in items.iter() {
+                                        let id = item.id;
+                                        if !visited.contains(&id) {
+                                            let mut comp = Vec::new();
+                                            let mut queue = std::collections::VecDeque::new();
+                                            queue.push_back(id);
+                                            visited.insert(id);
+
+                                            while let Some(node) = queue.pop_front() {
+                                                comp.push(node);
+                                                if let Some(edges) = undir_adj.get(&node) {
+                                                    for &next_node in edges.iter() {
+                                                        if !visited.contains(&next_node) {
+                                                            visited.insert(next_node);
+                                                            queue.push_back(next_node);
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            if comp.len() >= 1 {
+                                                let mut total_cost = 0;
+                                                let mut total_booms = 0.0;
+                                                for &node_id in comp.iter() {
+                                                    if let Some(comp_item) = items.iter().find(|x| x.id == node_id) {
+                                                        total_cost += comp_item.avg_cost;
+                                                        total_booms += comp_item.avg_booms;
+                                                    }
+                                                }
+                                                result_sets.push((comp, total_cost, total_booms));
+                                            }
+                                        }
+                                    }
+                                    result_sets
+                                };
+
+                                let summary_elements = sets.iter().flat_map(|(comp, total_cost, _)| {
+                                    let directed_adj = &directed_adj;
+                                    comp.iter().filter_map(move |&node_id| {
+                                        let is_last = directed_adj.get(&node_id).map_or(false, |out_edges| out_edges.is_empty());
+                                        if is_last {
+                                            canvas_items().iter().find(|x| x.id == node_id).cloned().map(|last_item| {
+                                                let summary_x = last_item.x + 230;
+                                                let summary_y = last_item.y;
+                                                let num_items = comp.len();
+                                                let t_cost = *total_cost;
+                                                
+                                                let mut comp_items = Vec::new();
+                                                for &cid in comp.iter() {
+                                                    if let Some(citem) = canvas_items().iter().find(|x| x.id == cid).cloned() {
+                                                        comp_items.push(citem);
+                                                    }
+                                                }
+                                                comp_items.sort_by_key(|x| x.level);
+
+                                                rsx! {
+                                                    div {
+                                                        key: "summary-{node_id}",
+                                                        class: "canvas-set-summary-card",
+                                                        style: "left: {summary_x}px; top: {summary_y}px;",
+                                                        div { class: "set-summary-header", "📦 Equipment Set" }
+                                                        div { class: "set-summary-item",
+                                                            span { class: "set-summary-label", "Items:" }
+                                                            span { class: "set-summary-value", "{num_items}" }
+                                                        }
+                                                        div { class: "set-summary-item",
+                                                            span { class: "set-summary-label", "Total Cost:" }
+                                                            {
+                                                                let display_cost = if cost_display_mode() == DisplayMode::Median {
+                                                                    let mut sum = 0u128;
+                                                                    for &cid in comp.iter() {
+                                                                        if let Some(ci) = canvas_items().iter().find(|x| x.id == cid) {
+                                                                            sum += ci.median_cost;
+                                                                        }
+                                                                    }
+                                                                    sum
+                                                                } else {
+                                                                    t_cost
+                                                                };
+                                                                rsx! {
+                                                                    span { class: "set-summary-value gold", "{format_mesos(display_cost)}" }
+                                                                }
+                                                            }
+                                                        }
+                                                        div { 
+                                                            class: "set-summary-item", 
+                                                            style: "flex-direction: column; align-items: stretch; margin-top: 6px; gap: 4px; border-top: 1px dashed rgba(16, 185, 129, 0.2); padding-top: 6px;",
+                                                            div { class: "set-summary-item", style: "font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; margin-bottom: 2px;",
+                                                                span { "Expected Booms:" }
+                                                            }
+                                                            for comp_item in comp_items.iter() {
+                                                                div { class: "set-summary-item", style: "font-size: 0.75rem; display: flex; align-items: center;",
+                                                                    if comp_item.is_custom {
+                                                                        span { style: "font-size: 0.9rem; margin-right: 4px; display: flex; align-items: center;", "🛠️" }
+                                                                    } else {
+                                                                        img {
+                                                                            src: "{comp_item.png_url}",
+                                                                            style: "width: 16px; height: 16px; object-fit: contain; margin-right: 4px; border-radius: 2px;"
+                                                                        }
+                                                                    }
+                                                                    span { class: "set-summary-label", "{comp_item.name} (Lv. {comp_item.level}):" }
+                                                                    span { class: "set-summary-value ruby",
+                                                                        {
+                                                                            let v = if booms_display_mode() == DisplayMode::Median {
+                                                                                comp_item.median_booms
+                                                                            } else {
+                                                                                comp_item.avg_booms
+                                                                            };
+                                                                            format!("{:.3}", v)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            })
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+
+                                rsx! {
+                                    {summary_elements}
+                                }
+                            }
                         }
                     }
+                }
 
                     // Floating Top Instruction Guide
                     div { class: "floating-summary-bar", style: "border-color: rgba(16, 185, 129, 0.3); background: rgba(5, 7, 18, 0.85); width: auto; max-width: 90%; display: flex; align-items: center; justify-content: space-between; gap: 20px;",
@@ -1612,166 +1932,6 @@ fn App() -> Element {
                         div { class: "canvas-warning-toast",
                             span { "⚠️" }
                             span { "{canvas_error}" }
-                        }
-                    }
-
-                    {
-                        let directed_adj = {
-                            let mut adj = std::collections::HashMap::<usize, Vec<usize>>::new();
-                            for item in canvas_items().iter() {
-                                adj.insert(item.id, Vec::new());
-                            }
-                            for &(src, tgt) in connections().iter() {
-                                if adj.contains_key(&src) && adj.contains_key(&tgt) {
-                                    adj.get_mut(&src).unwrap().push(tgt);
-                                }
-                            }
-                            adj
-                        };
-
-                        let sets = {
-                            let mut visited = std::collections::HashSet::<usize>::new();
-                            let mut result_sets = Vec::<(Vec<usize>, u128, f64)>::new();
-                            let items = canvas_items();
-                            let conn_list = connections();
-
-                            let mut undir_adj = std::collections::HashMap::<usize, Vec<usize>>::new();
-                            for item in items.iter() {
-                                undir_adj.insert(item.id, Vec::new());
-                            }
-                            for &(src, tgt) in conn_list.iter() {
-                                if undir_adj.contains_key(&src) && undir_adj.contains_key(&tgt) {
-                                    undir_adj.get_mut(&src).unwrap().push(tgt);
-                                    undir_adj.get_mut(&tgt).unwrap().push(src);
-                                }
-                            }
-
-                            for item in items.iter() {
-                                let id = item.id;
-                                if !visited.contains(&id) {
-                                    let mut comp = Vec::new();
-                                    let mut queue = std::collections::VecDeque::new();
-                                    queue.push_back(id);
-                                    visited.insert(id);
-
-                                    while let Some(node) = queue.pop_front() {
-                                        comp.push(node);
-                                        if let Some(edges) = undir_adj.get(&node) {
-                                            for &next_node in edges.iter() {
-                                                if !visited.contains(&next_node) {
-                                                    visited.insert(next_node);
-                                                    queue.push_back(next_node);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if comp.len() >= 1 {
-                                        let mut total_cost = 0;
-                                        let mut total_booms = 0.0;
-                                        for &node_id in comp.iter() {
-                                            if let Some(comp_item) = items.iter().find(|x| x.id == node_id) {
-                                                total_cost += comp_item.avg_cost;
-                                                total_booms += comp_item.avg_booms;
-                                            }
-                                        }
-                                        result_sets.push((comp, total_cost, total_booms));
-                                    }
-                                }
-                            }
-                            result_sets
-                        };
-
-                        let summary_elements = sets.iter().flat_map(|(comp, total_cost, _)| {
-                            let directed_adj = &directed_adj;
-                            comp.iter().filter_map(move |&node_id| {
-                                let is_last = directed_adj.get(&node_id).map_or(false, |out_edges| out_edges.is_empty());
-                                if is_last {
-                                    canvas_items().iter().find(|x| x.id == node_id).cloned().map(|last_item| {
-                                        let summary_x = last_item.x + 220;
-                                        let summary_y = last_item.y;
-                                        let num_items = comp.len();
-                                        let t_cost = *total_cost;
-                                        
-                                        let mut comp_items = Vec::new();
-                                        for &cid in comp.iter() {
-                                            if let Some(citem) = canvas_items().iter().find(|x| x.id == cid).cloned() {
-                                                comp_items.push(citem);
-                                            }
-                                        }
-                                        comp_items.sort_by_key(|x| x.level);
-
-                                        rsx! {
-                                            div {
-                                                key: "summary-{node_id}",
-                                                class: "canvas-set-summary-card",
-                                                style: "left: {summary_x}px; top: {summary_y}px;",
-                                                div { class: "set-summary-header", "📦 Equipment Set" }
-                                                div { class: "set-summary-item",
-                                                    span { class: "set-summary-label", "Items:" }
-                                                    span { class: "set-summary-value", "{num_items}" }
-                                                }
-                                                div { class: "set-summary-item",
-                                                    span { class: "set-summary-label", "Total Cost:" }
-                                                    {
-                                                        let display_cost = if cost_display_mode() == DisplayMode::Median {
-                                                            // sum of each item's median cost
-                                                            let mut sum = 0u128;
-                                                            for &cid in comp.iter() {
-                                                                if let Some(ci) = canvas_items().iter().find(|x| x.id == cid) {
-                                                                    sum += ci.median_cost;
-                                                                }
-                                                            }
-                                                            sum
-                                                        } else {
-                                                            t_cost
-                                                        };
-                                                        rsx! {
-                                                            span { class: "set-summary-value gold", "{format_mesos(display_cost)}" }
-                                                        }
-                                                    }
-                                                }
-                                                div { 
-                                                    class: "set-summary-item", 
-                                                    style: "flex-direction: column; align-items: stretch; margin-top: 6px; gap: 4px; border-top: 1px dashed rgba(16, 185, 129, 0.2); padding-top: 6px;",
-                                                    div { class: "set-summary-item", style: "font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; margin-bottom: 2px;",
-                                                        span { "Expected Booms:" }
-                                                    }
-                                                    for comp_item in comp_items.iter() {
-                                                        div { class: "set-summary-item", style: "font-size: 0.75rem; display: flex; align-items: center;",
-                                                            if comp_item.is_custom {
-                                                                span { style: "font-size: 0.9rem; margin-right: 4px; display: flex; align-items: center;", "🛠️" }
-                                                            } else {
-                                                                img {
-                                                                    src: "{comp_item.png_url}",
-                                                                    style: "width: 16px; height: 16px; object-fit: contain; margin-right: 4px; border-radius: 2px;"
-                                                                }
-                                                            }
-                                                            span { class: "set-summary-label", "{comp_item.name} (Lv. {comp_item.level}):" }
-                                                            span { class: "set-summary-value ruby",
-                                                                {
-                                                                    let v = if booms_display_mode() == DisplayMode::Median {
-                                                                        comp_item.median_booms
-                                                                    } else {
-                                                                        comp_item.avg_booms
-                                                                    };
-                                                                    format!("{:.3}", v)
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    })
-                                } else {
-                                    None
-                                }
-                            })
-                        });
-
-                        rsx! {
-                            {summary_elements}
                         }
                     }
 
@@ -2327,7 +2487,6 @@ fn App() -> Element {
                                                 }
                                             }
                                         }
-                                        }
                                         
                                         div { class: "form-group",
                                             label { class: "input-label", "Quick Star Target Presets" }
@@ -2377,5 +2536,6 @@ fn App() -> Element {
             }
         }
     }
+}
 }
 
