@@ -808,6 +808,8 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .star-config-row-label .star-icon {
@@ -816,7 +818,8 @@ body {
 }
 
 .star-config-row-selectors {
-  width: 180px;
+  width: 150px;
+  flex-shrink: 0;
 }
 
 .star-config-row-selectors .mode-toggle-btn {
