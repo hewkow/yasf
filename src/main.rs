@@ -2272,8 +2272,8 @@ fn App() -> Element {
                                                         for i in 0..7 {
                                                             div { class: "star-config-row",
                                                                 span { class: "star-config-row-label",
-                                                                    span { class: "star-icon", "*" }
-                                                                    "{15 + i} -> {15 + i + 1}"
+                                                                    span { class: "star-icon", "★" }
+                                                                    "{15 + i} ➔ {15 + i + 1}"
                                                                 }
                                                                 div { class: "star-config-row-selectors",
                                                                     div { class: "mode-toggle-grid",
@@ -2305,7 +2305,6 @@ fn App() -> Element {
                                                                                     items[idx].median_cost = med_cost;
                                                                                     items[idx].median_booms = med_booms;
                                                                                 },
-                                                                                },
                                                                                 "{lbl}"
                                                                             }
                                                                         }
@@ -2316,6 +2315,7 @@ fn App() -> Element {
                                                     }
                                                 }
                                             }
+                                        }
                                         }
                                         
                                         div { class: "form-group",
