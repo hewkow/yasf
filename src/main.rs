@@ -9,7 +9,7 @@ use yasf::starforce::{
     EnhancementMode, EnhanceConfig, BIN_SIZE, SimResult, CanvasItem, stars_engine, simulate_equip,
     propagate_canvas_items, format_mesos, format_duration,
 };
-use yasf::components::canvas::StarsVisualizer;
+use yasf::components::star_visual::StarsVisualizer;
 
 static CSS: Asset = asset!("/assets/main.css");
 
