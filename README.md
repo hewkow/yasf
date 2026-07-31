@@ -99,3 +99,8 @@ yasf/
 2. Ensure `cargo clippy` passes without warnings.
 3. Follow the Dioxus 0.7 state management conventions (prefer Signals over legacy `use_state`).
 4. Write ADRs in `docs/decisions/` for significant architectural modifications.
+
+## Credits & Acknowledgments
+
+- **Rates & Formulas:** Success/boom rates and the KMS cost formula derived from [MathBro's Star Force Calculator](https://brendonmay.github.io/starforceCalculator/) and [AngeloTadeucci/starforcing-test](https://starforce.tadeucci.dev/)
+
