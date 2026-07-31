@@ -1,0 +1,65 @@
+name: Deploy Dioxus App to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Dioxus CLI
+        run: cargo binstall dioxus-cli --force -y
+
+      - name: Build Dioxus Web App
+        run: dx build --release --platform web
+
+      - name: Locate build artifacts
+        id: find_dist
+        run: |
+          DIST_PATH=$(find target/dx -type d -path "*/release/web/public" | head -n 1)
+          if [ -z "$DIST_PATH" ]; then
+            echo "Error: Could not locate Dioxus web build output."
+            exit 1
+          fi
+          echo "path=$DIST_PATH" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.find_dist.outputs.path }}
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
