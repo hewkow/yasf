@@ -1,6 +1,10 @@
 # YASF (Yet Another StarForce)
 
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://hewkow.github.io/yasf/)
+
 A high-performance, interactive MapleStory Starforce Enhancement Simulator & Node Graph Visualizer built in Rust using **Dioxus 0.7** and WebAssembly (WASM).
+
+> **Project Status**: Complete / As-Is. The application is fully deployed and operational at [hewkow.github.io/yasf/](https://hewkow.github.io/yasf/).
 
 ## Overview
 
@@ -14,7 +18,12 @@ A high-performance, interactive MapleStory Starforce Enhancement Simulator & Nod
 - **Visual Node Canvas**: Drag-and-drop node canvas allowing equipment dependency chaining and transfer hammer propagation.
 - **Detailed Statistical Breakdown**: Percentile estimations (50th, 75th, 90th, 95th, 99th), cost distributions, and per-star friction analytics (mesos lost & booms per star level).
 
-## Quick Start
+## Live Application
+
+The application is deployed and hosted on GitHub Pages:
+👉 **[hewkow.github.io/yasf/](https://hewkow.github.io/yasf/)**
+
+## Local Development
 
 ### Prerequisites
 
@@ -61,16 +70,16 @@ The application is structured into two core modules:
 
 ### Architectural Decision Records (ADRs)
 
-Key architectural choices are documented in [`docs/decisions/`](file:///D:/Projects/starforce-canvas/docs/decisions/):
+Key architectural choices are documented in [`docs/decisions/`](docs/decisions/):
 
-- [ADR-001: Choice of Dioxus 0.7 for Frontend Architecture](file:///D:/Projects/starforce-canvas/docs/decisions/ADR-001-dioxus-web-framework.md)
-- [ADR-002: Monte Carlo Simulation Engine and Binned Metrics Storage](file:///D:/Projects/starforce-canvas/docs/decisions/ADR-002-starforce-simulation-engine.md)
-- [ADR-003: Node Canvas Graph Propagation for Equipment Chains](file:///D:/Projects/starforce-canvas/docs/decisions/ADR-003-canvas-node-propagation.md)
+- [ADR-001: Choice of Dioxus 0.7 for Frontend Architecture](docs/decisions/ADR-001-dioxus-web-framework.md)
+- [ADR-002: Monte Carlo Simulation Engine and Binned Metrics Storage](docs/decisions/ADR-002-starforce-simulation-engine.md)
+- [ADR-003: Node Canvas Graph Propagation for Equipment Chains](docs/decisions/ADR-003-canvas-node-propagation.md)
 
 ## Project Structure
 
 ```
-starforce-canvas/
+yasf/
 ├── assets/             # Static assets (images, icons)
 ├── docs/
 │   └── decisions/      # Architecture Decision Records (ADRs)
