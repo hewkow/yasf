@@ -1864,8 +1864,6 @@ fn App() -> Element {
                                     (10_000_u32, "10K"),
                                     (50_000_u32, "50K"),
                                     (100_000_u32, "100K"),
-                                    (500_000_u32, "500K"),
-                                    (1_000_000_u32, "1M"),
                                 ] {
                                     button {
                                         class: if canvas_trials() == val { "config-chip active" } else { "config-chip" },
