@@ -37,7 +37,7 @@ jobs:
         run: cargo binstall dioxus-cli@0.7.10 --force -y
 
       - name: Build Dioxus Web App
-        run: dx build --release --platform web
+        run: dx build --release --platform web --base-path /yasf/
 
       - name: Locate build artifacts
         id: find_dist
